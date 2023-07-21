@@ -20,10 +20,13 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/annotations"
 	"golang.org/x/exp/slices"
 
 	ingester_client "github.com/grafana/mimir/pkg/ingester/client"
 	"github.com/grafana/mimir/pkg/mimirpb"
+	"github.com/grafana/mimir/pkg/querier/iterators"
 	"github.com/grafana/mimir/pkg/querier/stats"
 	"github.com/grafana/mimir/pkg/util"
 	"github.com/grafana/mimir/pkg/util/limiter"
@@ -426,6 +429,93 @@ func (d *Distributor) estimatedIngestersPerSeries(replicationSet ring.Replicatio
 
 	// Not zone-aware: quorum is replication factor less allowable unavailable ingesters.
 	return d.ingestersRing.ReplicationFactor() - replicationSet.MaxErrors
+}
+
+// LabelValuesStream returns an iterator over the values for a given label name.
+func (d *Distributor) LabelValuesStream(ctx context.Context, from, to int64, name string, matchers ...*labels.Matcher) storage.LabelValues {
+	replicationSet, err := d.GetIngesters(ctx)
+	if err != nil {
+		return storage.ErrLabelValues(err)
+	}
+
+	req, err := ingester_client.ToLabelValuesRequest(model.LabelName(name), model.Time(from), model.Time(to), matchers)
+	if err != nil {
+		return storage.ErrLabelValues(err)
+	}
+
+	streams, err := forReplicationSet(ctx, d, replicationSet, func(ctx context.Context, client ingester_client.IngesterClient) (
+		ingester_client.Ingester_LabelValuesStreamClient, error) {
+		return client.LabelValuesStream(ctx, req)
+	})
+	if err != nil {
+		return storage.ErrLabelValues(err)
+	}
+
+	var its []storage.LabelValues
+	for _, stream := range streams {
+		its = append(its, &labelValues{
+			stream: stream,
+		})
+	}
+
+	return iterators.NewMergedLabelValues(its)
+}
+
+// labelValues is an iterator over label values from an ingester gRPC stream.
+type labelValues struct {
+	stream    ingester_client.Ingester_LabelValuesStreamClient
+	buf       []string
+	exhausted bool
+	err       error
+}
+
+func (it *labelValues) Next() bool {
+	if it.exhausted || it.err != nil {
+		return false
+	}
+
+	if len(it.buf) > 1 {
+		it.buf = it.buf[1:]
+		return true
+	}
+
+	if len(it.buf) == 0 {
+		resp, err := it.stream.Recv()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				it.exhausted = true
+			} else {
+				it.err = errors.Wrap(err, "receiving gRPC message")
+			}
+
+			return false
+		}
+
+		it.buf = resp.LabelValues
+		if len(it.buf) == 0 {
+			// Shouldn't happen
+			it.exhausted = true
+			return false
+		}
+	}
+
+	return true
+}
+
+func (it *labelValues) At() string {
+	return it.buf[0]
+}
+
+func (it *labelValues) Err() error {
+	return it.err
+}
+
+func (it *labelValues) Warnings() annotations.Annotations {
+	return nil
+}
+
+func (it *labelValues) Close() error {
+	return it.stream.CloseSend()
 }
 
 // Merges and dedupes two sorted slices with samples together.

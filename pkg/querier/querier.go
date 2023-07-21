@@ -58,6 +58,7 @@ type Config struct {
 	StreamingChunksPerStoreGatewaySeriesBufferSize uint64        `yaml:"streaming_chunks_per_store_gateway_series_buffer_size" category:"experimental"`
 	MinimizeIngesterRequests                       bool          `yaml:"minimize_ingester_requests" category:"experimental"`
 	MinimiseIngesterRequestsHedgingDelay           time.Duration `yaml:"minimize_ingester_requests_hedging_delay" category:"experimental"`
+	StreamLabelValuesFromIngesters                 bool          `yaml:"stream_label_values_from_ingesters" category:"experimental"`
 
 	// PromQL engine config.
 	EngineConfig engine.Config `yaml:",inline"`
@@ -274,6 +275,11 @@ func (mq multiQuerier) getQueriers(ctx context.Context) (context.Context, []stor
 		if err != nil {
 			return nil, nil, err
 		}
+		// TODO: Make mq.cfg.StreamLabelValuesFromIngesters user configurable
+		if mq.cfg.StreamLabelValuesFromIngesters || true {
+			// Adapt the distributor querier so label values are streamed from the ingester
+			q = &streamingLabelValuesAdapter{q}
+		}
 		queriers = append(queriers, q)
 	}
 
@@ -286,6 +292,27 @@ func (mq multiQuerier) getQueriers(ctx context.Context) (context.Context, []stor
 	}
 
 	return ctx, queriers, nil
+}
+
+type streamingLabelValuesAdapter struct {
+	storage.Querier
+}
+
+func (q *streamingLabelValuesAdapter) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) (
+	[]string, annotations.Annotations, error) {
+	it := q.LabelValuesStream(ctx, name, matchers...)
+	defer func() {
+		_ = it.Close()
+	}()
+
+	var vals []string
+	for it.Next() && ctx.Err() == nil {
+		vals = append(vals, it.At())
+	}
+	if ctx.Err() != nil {
+		return nil, nil, ctx.Err()
+	}
+	return vals, it.Warnings(), it.Err()
 }
 
 // Select implements storage.Querier interface.
@@ -422,6 +449,28 @@ func (mq multiQuerier) LabelValues(ctx context.Context, name string, matchers ..
 	}
 
 	return util.MergeSlices(sets...), warnings, nil
+}
+
+// LabelValuesStream implements storage.Querier.
+func (mq multiQuerier) LabelValuesStream(ctx context.Context, name string, matchers ...*labels.Matcher) storage.LabelValues {
+	ctx, queriers, err := mq.getQueriers(ctx)
+	if err != nil {
+		if errors.Is(err, errEmptyTimeRange) {
+			return storage.EmptyLabelValues()
+		}
+		return storage.ErrLabelValues(err)
+	}
+
+	if len(queriers) == 1 {
+		return queriers[0].LabelValuesStream(ctx, name, matchers...)
+	}
+
+	var its []storage.LabelValues
+	for _, querier := range queriers {
+		its = append(its, querier.LabelValuesStream(ctx, name, matchers...))
+	}
+
+	return iterators.NewMergedLabelValues(its)
 }
 
 func (mq multiQuerier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {

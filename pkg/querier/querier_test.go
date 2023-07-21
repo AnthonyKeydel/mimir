@@ -1029,15 +1029,23 @@ var errDistributorError = fmt.Errorf("errDistributorError")
 func (m *errDistributor) QueryStream(context.Context, *stats.QueryMetrics, model.Time, model.Time, ...*labels.Matcher) (client.CombinedQueryStreamResponse, error) {
 	return client.CombinedQueryStreamResponse{}, errDistributorError
 }
+
 func (m *errDistributor) QueryExemplars(context.Context, model.Time, model.Time, ...[]*labels.Matcher) (*client.ExemplarQueryResponse, error) {
 	return nil, errDistributorError
 }
+
 func (m *errDistributor) LabelValuesForLabelName(context.Context, model.Time, model.Time, model.LabelName, ...*labels.Matcher) ([]string, error) {
 	return nil, errDistributorError
 }
+
+func (m *errDistributor) LabelValuesStream(context.Context, int64, int64, string, ...*labels.Matcher) storage.LabelValues {
+	return storage.ErrLabelValues(errDistributorError)
+}
+
 func (m *errDistributor) LabelNames(context.Context, model.Time, model.Time, ...*labels.Matcher) ([]string, error) {
 	return nil, errDistributorError
 }
+
 func (m *errDistributor) MetricsForLabelMatchers(context.Context, model.Time, model.Time, ...*labels.Matcher) ([]labels.Labels, error) {
 	return nil, errDistributorError
 }
@@ -1066,6 +1074,10 @@ func (d *emptyDistributor) QueryExemplars(context.Context, model.Time, model.Tim
 
 func (d *emptyDistributor) LabelValuesForLabelName(context.Context, model.Time, model.Time, model.LabelName, ...*labels.Matcher) ([]string, error) {
 	return nil, nil
+}
+
+func (d *emptyDistributor) LabelValuesStream(context.Context, int64, int64, string, ...*labels.Matcher) storage.LabelValues {
+	return storage.EmptyLabelValues()
 }
 
 func (d *emptyDistributor) LabelNames(context.Context, model.Time, model.Time, ...*labels.Matcher) ([]string, error) {
@@ -1389,6 +1401,11 @@ func (m *mockBlocksStorageQuerier) Select(ctx context.Context, sortSeries bool, 
 func (m *mockBlocksStorageQuerier) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	args := m.Called(ctx, name, matchers)
 	return args.Get(0).([]string), args.Get(1).(annotations.Annotations), args.Error(2)
+}
+
+func (m *mockBlocksStorageQuerier) LabelValuesStream(ctx context.Context, name string, matchers ...*labels.Matcher) storage.LabelValues {
+	args := m.Called(ctx, name, matchers)
+	return args.Get(0).(storage.LabelValues)
 }
 
 func (m *mockBlocksStorageQuerier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {

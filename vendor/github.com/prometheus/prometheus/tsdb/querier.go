@@ -79,6 +79,10 @@ func (q *blockBaseQuerier) LabelValues(ctx context.Context, name string, matcher
 	return res, nil, err
 }
 
+func (q *blockBaseQuerier) LabelValuesStream(ctx context.Context, name string, matchers ...*labels.Matcher) storage.LabelValues {
+	return q.index.LabelValuesStream(ctx, name, matchers...)
+}
+
 func (q *blockBaseQuerier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	res, err := q.index.LabelNames(ctx, matchers...)
 	return res, nil, err
@@ -287,7 +291,7 @@ func PostingsForMatchers(ctx context.Context, ix IndexPostingsReader, ms ...*lab
 				its = append(its, it)
 			}
 		default: // l=""
-			// If the matchers for a labelname selects an empty value, it selects all
+			// If a matcher for a labelname selects an empty value, it selects all
 			// the series which don't have the label name set too. See:
 			// https://github.com/prometheus/prometheus/issues/3575 and
 			// https://github.com/prometheus/prometheus/pull/3578#issuecomment-351653555
@@ -461,7 +465,7 @@ func labelValuesWithMatchers(ctx context.Context, r IndexReader, name string, ma
 	return values, nil
 }
 
-// labelValuesFromSeries returns all unique label values from for given label name from supplied series. Values are not sorted.
+// labelValuesFromSeries returns all unique label values for given label name from supplied series. Values are not sorted.
 // buf is space for holding result (if it isn't big enough, it will be ignored), may be nil.
 func labelValuesFromSeries(r IndexReader, labelName string, refs []storage.SeriesRef, buf []string) ([]string, error) {
 	values := map[string]struct{}{}
@@ -540,6 +544,11 @@ func (p *prependPostings) Err() error {
 		return nil
 	}
 	return p.rest.Err()
+}
+
+func (p *prependPostings) Reset() {
+	p.ix = -1
+	p.rest.Reset()
 }
 
 func labelNamesWithMatchers(ctx context.Context, r IndexReader, matchers ...*labels.Matcher) ([]string, error) {
