@@ -5,6 +5,7 @@ package distributor
 import (
 	"fmt"
 
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/mimir/pkg/mimirpb"
 )
 
@@ -17,8 +18,8 @@ type Request struct {
 	// have a backing array to avoid extra allocations
 	cleanupsArr [10]func()
 	cleanups    []func()
-
-	getRequest supplierFunc
+	headers     []*httpgrpc.Header
+	getRequest  supplierFunc
 
 	request *mimirpb.WriteRequest
 	err     error
@@ -58,6 +59,23 @@ func (r *Request) AddCleanup(f func()) {
 		return
 	}
 	r.cleanups = append(r.cleanups, f)
+}
+
+func (r *Request) AddHeader(key string, value []string) {
+	r.headers = append(r.headers, &httpgrpc.Header{Key: key, Values: value})
+}
+
+func (r *Request) GetHeader(key string) []string {
+	for _, h := range r.headers {
+		if h.Key == key {
+			return h.Values
+		}
+	}
+	return nil
+}
+
+func (r *Request) Headers() []*httpgrpc.Header {
+	return r.headers
 }
 
 // CleanUp calls all added cleanups in reverse order - the last added is the first invoked. CleanUp removes

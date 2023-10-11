@@ -1139,6 +1139,8 @@ Usage of ./cmd/mimir/mimir:
     	Per-tenant allowed push request burst size. 0 to disable.
   -distributor.request-rate-limit float
     	Per-tenant push request rate limit in requests per second. 0 to disable.
+  -distributor.retry-after-average duration
+    	[experimental] Average time to wait before retrying a 429/529 request. (default 10s)
   -distributor.ring.consul.acl-token string
     	ACL Token used to interact with Consul.
   -distributor.ring.consul.cas-retry-delay duration

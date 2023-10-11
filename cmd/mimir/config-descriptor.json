@@ -1566,6 +1566,7 @@
         },
         {
           "kind": "field",
+<<<<<<< HEAD
           "name": "limit_inflight_requests_using_grpc_method_limiter",
           "required": false,
           "desc": "Use experimental method of limiting push requests.",
@@ -1573,6 +1574,15 @@
           "fieldDefaultValue": false,
           "fieldFlag": "distributor.limit-inflight-requests-using-grpc-method-limiter",
           "fieldType": "boolean",
+=======
+          "name": "retry_after_average",
+          "required": false,
+          "desc": "Average time to wait before retrying a 429/529 request.",
+          "fieldValue": null,
+          "fieldDefaultValue": 10000000000,
+          "fieldFlag": "distributor.retry-after-average",
+          "fieldType": "duration",
+>>>>>>> 0c4cd8b4e (Distributor: Add Retry-After header for 429 response)
           "fieldCategory": "experimental"
         }
       ],

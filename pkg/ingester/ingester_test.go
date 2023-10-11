@@ -6033,6 +6033,7 @@ func TestIngester_PushInstanceLimitsWithCircuitBreaker(t *testing.T) {
 				Log: logger,
 			}
 			grpcOptions := []grpc.ServerOption{
+				grpc.MaxConcurrentStreams(math.MaxUint32 - 1),
 				grpc.UnaryInterceptor(middleware.ServerUserHeaderInterceptor),
 				grpc.ChainUnaryInterceptor(serverLog.UnaryServerInterceptor),
 			}
