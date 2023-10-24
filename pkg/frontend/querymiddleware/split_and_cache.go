@@ -587,7 +587,7 @@ func doRequests(ctx context.Context, downstream Handler, reqs []Request) ([]requ
 	g, ctx := errgroup.WithContext(ctx)
 	mtx := sync.Mutex{}
 	resps := make([]requestResponse, 0, len(reqs))
-	queryStatistics := QueryDetailsFromContext(ctx)
+	queryStatistics := stats.FromContext(ctx)
 	for i := 0; i < len(reqs); i++ {
 		req := reqs[i]
 		g.Go(func() error {
