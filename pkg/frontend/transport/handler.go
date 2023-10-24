@@ -286,7 +286,11 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 
 	if details != nil && !details.Start.IsZero() && !details.End.IsZero() {
 		// Start and End may be zero when the request wasn't a query (e.g. /metadata)
-		logMessage = append(logMessage, "length", details.End.Sub(details.Start).String())
+		logMessage = append(logMessage,
+			"length", details.End.Sub(details.Start).String(),
+			"cached_results_bytes", details.CachedResultsBytes,
+			"uncached_results_bytes", details.UncachedResultsBytes,
+		)
 	}
 
 	if len(f.cfg.LogQueryRequestHeaders) != 0 {
