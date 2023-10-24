@@ -11,9 +11,7 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
 	"net/http"
-	"strconv"
 	"sync"
 	"time"
 
@@ -158,6 +156,7 @@ type Distributor struct {
 type Config struct {
 	PoolConfig PoolConfig `yaml:"pool"`
 
+	RetryConfig     RetryConfig     `yaml:"retry"`
 	HATrackerConfig HATrackerConfig `yaml:"ha_tracker"`
 
 	MaxRecvMsgSize int           `yaml:"max_recv_msg_size" category:"advanced"`
@@ -191,13 +190,6 @@ type Config struct {
 
 	WriteRequestsBufferPoolingEnabled           bool `yaml:"write_requests_buffer_pooling_enabled" category:"experimental"`
 	LimitInflightRequestsUsingGrpcMethodLimiter bool `yaml:"limit_inflight_requests_using_grpc_method_limiter" category:"experimental"`
-	WriteRequestsBufferPoolingEnabled bool `yaml:"write_requests_buffer_pooling_enabled" category:"experimental"`
-
-	RetryAfterAverage time.Duration `yaml:"retry_after_average" category:"experimental"`
-
-	// The strategy 0 is retry after average with jitter that is capped at the same as the average
-	// The strategy 1 is using Retry-Attempts header and Retry-After header, set the average to retry-attemps * retry_after_average as the average, use jitter on that average
-	RetryStrategy int `yaml:"retry_strategy" category:"experimental"`
 }
 
 // PushWrapper wraps around a push. It is similar to middleware.Interface.
@@ -208,17 +200,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet, logger log.Logger) {
 	cfg.PoolConfig.RegisterFlags(f)
 	cfg.HATrackerConfig.RegisterFlags(f)
 	cfg.DistributorRing.RegisterFlags(f, logger)
-	// read configuration here like retry-after-duration and retry-strategy
+	cfg.RetryConfig.RegisterFlags(f)
+
 	f.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "Max message size in bytes that the distributors will accept for incoming push requests to the remote write API. If exceeded, the request will be rejected.")
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	f.BoolVar(&cfg.WriteRequestsBufferPoolingEnabled, "distributor.write-requests-buffer-pooling-enabled", false, "Enable pooling of buffers used for marshaling write requests.")
-<<<<<<< HEAD
 	f.BoolVar(&cfg.LimitInflightRequestsUsingGrpcMethodLimiter, "distributor.limit-inflight-requests-using-grpc-method-limiter", false, "Use experimental method of limiting push requests.")
 
-=======
-	f.DurationVar(&cfg.RetryAfterAverage, "distributor.retry-after-average", 10*time.Second, "Average time to wait before retrying a 429/529 request.")
-	f.IntVar(&cfg.RetryStrategy, "distributor.retry-strategy", 0, "Retry strategy for 429/529 requests. 0 is no retry after. strategy 1 is retry after average with jitter. 2 is using Retry-Attempts header and Retry-After header, set the average to retry-attemps * retry_after_average and add jitter.")
->>>>>>> 0c4cd8b4e (Distributor: Add Retry-After header for 429 response)
 	cfg.DefaultLimits.RegisterFlags(f)
 }
 
@@ -960,12 +948,6 @@ func (d *Distributor) prePushValidationMiddleware(next PushFunc) PushFunc {
 			d.discardedSamplesRateLimited.WithLabelValues(userID, group).Add(float64(validatedSamples))
 			d.discardedExemplarsRateLimited.WithLabelValues(userID).Add(float64(validatedExemplars))
 			d.discardedMetadataRateLimited.WithLabelValues(userID).Add(float64(validatedMetadata))
-			attemps := pushReq.GetHeader("Retry-Attempt")
-			attemp := "1"
-			if !(attemps == nil || len(attemps) == 0) {
-				attemp = attemps[0]
-			}
-			pushReq.AddHeader("Retry-After", []string{strconv.Itoa(d.getRetryAfter(attemp))})
 			return newIngestionRateLimitedError(d.limits.IngestionRate(userID), d.limits.IngestionBurstSize(userID))
 		}
 
@@ -1195,7 +1177,7 @@ func (d *Distributor) limitsMiddleware(next PushFunc) PushFunc {
 		now := mtime.Now()
 		if !d.requestRateLimiter.AllowN(now, userID, 1) {
 			d.discardedRequestsRateLimited.WithLabelValues(userID).Add(1)
-			pushReq.AddHeader("Retry-After", []string{strconv.Itoa(d.getRetryAfter())})
+
 			return newRequestRateLimitedError(d.limits.RequestRate(userID), d.limits.RequestBurstSize(userID))
 		}
 
@@ -1216,37 +1198,6 @@ func (d *Distributor) limitsMiddleware(next PushFunc) PushFunc {
 	}
 }
 
-func (d *Distributor) getRetryAfter(attemp string) int {
-	retryAttemp, err := strconv.Atoi(attemp)
-	if err != nil {
-		retryAttemp = 1
-	}
-	delaySeconds := 1
-	switch d.cfg.RetryStrategy {
-	case 1:
-		// Add a random jitter between -1.0*delaySeconds and + 1.0*delaySeconds.
-		jitter := int((rand.Float64()*2.0 - 1.0) * float64(d.cfg.RetryAfterAverage))
-		delaySeconds = jitter + int(d.cfg.RetryAfterAverage)
-	case 2:
-		// Add a random jitter between -1.0*delaySeconds and + 1.0*delaySeconds.
-		jitter := int((rand.Float64()*2.0 - 1.0) * float64(d.cfg.RetryAfterAverage*time.Duration(retryAttemp)))
-		delaySeconds = jitter + int(d.cfg.RetryAfterAverage)*retryAttemp
-	case 3:
-		
-	default:
-		delaySeconds = int(d.cfg.RetryAfterAverage)
-	}
-
-	// Guarantee that minimum delay is 1 second, maximum delay is 60s.
-	if delaySeconds < 1 {
-		delaySeconds = 1
-	} else if delaySeconds > 60 {
-		delaySeconds = 60
-	}
-
-	return delaySeconds
-}
-
 // Push is gRPC method registered as client.IngesterServer and distributor.DistributorServer.
 func (d *Distributor) Push(ctx context.Context, req *mimirpb.WriteRequest) (*mimirpb.WriteResponse, error) {
 	pushReq := NewParsedRequest(req)
@@ -1258,11 +1209,11 @@ func (d *Distributor) Push(ctx context.Context, req *mimirpb.WriteRequest) (*mim
 	if pushErr == nil {
 		return &mimirpb.WriteResponse{}, nil
 	}
-	handledErr := d.handlePushError(ctx, pushErr, pushReq)
+	handledErr := d.handlePushError(ctx, pushErr)
 	return nil, handledErr
 }
 
-func (d *Distributor) handlePushError(ctx context.Context, pushErr error, pushReq *Request) error {
+func (d *Distributor) handlePushError(ctx context.Context, pushErr error) error {
 	if errors.Is(pushErr, context.Canceled) {
 		return pushErr
 	}
@@ -1284,15 +1235,7 @@ func (d *Distributor) handlePushError(ctx context.Context, pushErr error, pushRe
 	if err == nil {
 		serviceOverloadErrorEnabled = d.limits.ServiceOverloadStatusCodeOnRateLimitEnabled(userID)
 	}
-<<<<<<< HEAD
 	return toGRPCError(pushErr, serviceOverloadErrorEnabled)
-=======
-
-	if httpStatus, ok := toHTTPStatus(pushErr, serviceOverloadErrorEnabled); ok {
-		return httpgrpc.ErrorfWithHeaders(httpStatus, pushReq.Headers(), pushErr.Error())
-	}
-	return pushErr
->>>>>>> 0c4cd8b4e (Distributor: Add Retry-After header for 429 response)
 }
 
 // push takes a write request and distributes it to ingesters using the ring.

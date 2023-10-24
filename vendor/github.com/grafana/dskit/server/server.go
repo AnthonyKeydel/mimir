@@ -374,7 +374,6 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 	}
 
 	grpcOptions := []grpc.ServerOption{
-		grpc.MaxConcurrentStreams(math.MaxUint32 - 1),
 		grpc.ChainUnaryInterceptor(grpcMiddleware...),
 		grpc.ChainStreamInterceptor(grpcStreamMiddleware...),
 		grpc.KeepaliveParams(grpcKeepAliveOptions),

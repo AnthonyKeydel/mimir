@@ -108,7 +108,7 @@ func TestConfig_Validate(t *testing.T) {
 func TestDistributor_Push(t *testing.T) {
 	// Metrics to assert on.
 	lastSeenTimestamp := "cortex_distributor_latest_seen_sample_timestamp_seconds"
-	// distributorSampleDelay := "cortex_distributor_sample_delay_seconds"
+	distributorSampleDelay := "cortex_distributor_sample_delay_seconds"
 	ctx := user.InjectOrgID(context.Background(), "user")
 
 	now := time.Now()
@@ -117,7 +117,7 @@ func TestDistributor_Push(t *testing.T) {
 		mtime.NowReset()
 	})
 
-	// expErrFail := httpgrpc.Errorf(http.StatusInternalServerError, "failed pushing to ingester: Fail")
+	expErrFail := httpgrpc.Errorf(http.StatusInternalServerError, "failed pushing to ingester: Fail")
 
 	type samplesIn struct {
 		num              int
@@ -135,6 +135,58 @@ func TestDistributor_Push(t *testing.T) {
 		expectedMetrics      string
 		timeOut              bool
 	}{
+		"A push of no samples shouldn't block or return error, even if ingesters are sad": {
+			numIngesters:   3,
+			happyIngesters: 0,
+		},
+		"A push to 3 happy ingesters should succeed": {
+			numIngesters:   3,
+			happyIngesters: 3,
+			samples:        samplesIn{num: 5, startTimestampMs: 123456789000},
+			metadata:       5,
+			metricNames:    []string{lastSeenTimestamp},
+			expectedMetrics: `
+				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
+				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.004
+			`,
+		},
+		"A push to 2 happy ingesters should succeed": {
+			numIngesters:   3,
+			happyIngesters: 2,
+			samples:        samplesIn{num: 5, startTimestampMs: 123456789000},
+			metadata:       5,
+			metricNames:    []string{lastSeenTimestamp},
+			expectedMetrics: `
+				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
+				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.004
+			`,
+		},
+		"A push to 1 happy ingesters should fail": {
+			numIngesters:   3,
+			happyIngesters: 1,
+			samples:        samplesIn{num: 10, startTimestampMs: 123456789000},
+			expectedError:  expErrFail,
+			metricNames:    []string{lastSeenTimestamp},
+			expectedMetrics: `
+				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
+				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.009
+			`,
+		},
+		"A push to 0 happy ingesters should fail": {
+			numIngesters:   3,
+			happyIngesters: 0,
+			samples:        samplesIn{num: 10, startTimestampMs: 123456789000},
+			expectedError:  expErrFail,
+			metricNames:    []string{lastSeenTimestamp},
+			expectedMetrics: `
+				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
+				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.009
+			`,
+		},
 		"A push exceeding burst size should fail": {
 			numIngesters:         3,
 			happyIngesters:       3,
@@ -264,23 +316,11 @@ func TestDistributor_Push(t *testing.T) {
 			} else {
 				assert.Nil(t, response)
 
-<<<<<<< HEAD
 				if tc.expectedGRPCError == nil {
 					assert.EqualError(t, err, tc.expectedError.Error())
 				} else {
 					checkGRPCError(t, tc.expectedGRPCError, tc.expectedErrorDetails, err)
 				}
-=======
-				// Assert that downstream gRPC statuses are passed back upstream
-				resp, ok := httpgrpc.HTTPResponseFromError(err)
-				assert.Equal(t, 1, len(resp.Headers))
-				assert.Equal(t, "Retry-After", resp.Headers[0].Key)
-				assert.NotEmpty(t, resp.Headers[0].Values)
-				retry, err := strconv.Atoi(resp.Headers[0].Values[0])
-				assert.NoError(t, err)
-				assert.True(t, retry >= 1 && retry <= 20)
-				assert.True(t, ok, fmt.Sprintf("expected error to be an httpgrpc error, but got: %T", err))
->>>>>>> 0c4cd8b4e (Distributor: Add Retry-After header for 429 response)
 			}
 
 			// Check tracked Prometheus metrics. Since the Push() response is sent as soon as the quorum

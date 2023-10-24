@@ -9,8 +9,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"math/rand"
 	"net/http"
+	"strconv"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
@@ -50,9 +54,10 @@ func Handler(
 	sourceIPs *middleware.SourceIPExtractor,
 	allowSkipLabelNameValidation bool,
 	limits *validation.Overrides,
+	retryCfg *RetryConfig,
 	push PushFunc,
 ) http.Handler {
-	return handler(maxRecvMsgSize, sourceIPs, allowSkipLabelNameValidation, limits, push, func(ctx context.Context, r *http.Request, maxRecvMsgSize int, dst []byte, req *mimirpb.PreallocWriteRequest) ([]byte, error) {
+	return handler(maxRecvMsgSize, sourceIPs, allowSkipLabelNameValidation, limits, retryCfg, push, func(ctx context.Context, r *http.Request, maxRecvMsgSize int, dst []byte, req *mimirpb.PreallocWriteRequest) ([]byte, error) {
 		res, err := util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), maxRecvMsgSize, dst, req, util.RawSnappy)
 		if errors.Is(err, util.MsgSizeTooLargeErr{}) {
 			err = distributorMaxWriteMessageSizeErr{actual: int(r.ContentLength), limit: maxRecvMsgSize}
@@ -78,6 +83,7 @@ func handler(
 	sourceIPs *middleware.SourceIPExtractor,
 	allowSkipLabelNameValidation bool,
 	limits *validation.Overrides,
+	retryCfg *RetryConfig,
 	push PushFunc,
 	parser parserFunc,
 ) http.Handler {
@@ -140,9 +146,52 @@ func handler(
 			if code != 202 {
 				level.Error(logger).Log("msg", "push error", "err", err)
 			}
+
+			if code == http.StatusTooManyRequests || code >= 500 && retryCfg != nil {
+				// If we are going to retry, set the Retry-After header.
+				// This is used by the client to determine how long to wait before retrying.
+				retrySeconds := calculateRetryAfter(r, retryCfg)
+				logger.Log("msg", "get retry-after", "retry-after", retrySeconds, "strategy", retryCfg.Strategy, "maxDelay", retryCfg.MaxDelay)
+				w.Header().Set("Retry-After", retrySeconds)
+			}
 			http.Error(w, msg, code)
 		}
 	})
+}
+
+// think about add another middlewre, in the end of middleware chain, to add retry-after header in response
+
+func calculateRetryAfter(req *http.Request, retryCfg *RetryConfig) string {
+	attemps := req.Header.Get("Retry-Attempt")
+	// default to Retry-Attempt 1
+	attemp := "1"
+	if attemps != "" {
+		attemp = attemps
+	}
+
+	// If retry-attemp is not valid, set it to default 1
+	retryAttemp, err := strconv.Atoi(attemp)
+	if attemp == "" || err != nil {
+		retryAttemp = 1
+	}
+	// the default value of base is RetryBase
+	base := retryCfg.Base
+
+	switch retryCfg.Strategy {
+	case 1:
+		base = retryCfg.Base * time.Duration(retryAttemp)
+	case 2:
+		base = retryCfg.Base * time.Duration(math.Pow(2, float64(retryAttemp-1)))
+	}
+
+	if base > retryCfg.MaxDelay {
+		base = retryCfg.MaxDelay
+	}
+
+	// the delaySeconds is a random number between 1 and base
+	delaySeconds := rand.Intn(int(base.Seconds())) + 1
+
+	return strconv.Itoa(delaySeconds)
 }
 
 // toHTTPStatus converts the given error into an appropriate HTTP status corresponding
