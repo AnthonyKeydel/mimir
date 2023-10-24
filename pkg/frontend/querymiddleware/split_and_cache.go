@@ -387,19 +387,19 @@ func (s *splitAndCacheMiddleware) fetchCacheExtents(ctx context.Context, now tim
 		extents[keyIdx] = make([]Extent, 0, len(resp.Extents))
 
 		// Filter out extents that are outside TTL.
-		for ix, respExtent := range resp.Extents {
+		for ix, cachedExtend := range resp.Extents {
 			// If we don't know the query timestamp, we use the cached result.
 			// This is temporary ... after max 7 days (previous hardcoded TTL) all cached results will have query timestamp recorded.
 			usedTTL := getTTLForExtent(now, ttl, ttlForExtentsInOOOWindow, oooWindow, &resp.Extents[ix])
-			if respExtent.QueryTimestampMs > 0 && respExtent.QueryTimestampMs < now.UnixMilli()-usedTTL.Milliseconds() {
+			if cachedExtend.QueryTimestampMs > 0 && cachedExtend.QueryTimestampMs < now.UnixMilli()-usedTTL.Milliseconds() {
 				extentsOutOfTTL++
 				continue
 			}
 
-			extents[keyIdx] = append(extents[keyIdx], respExtent)
+			extents[keyIdx] = append(extents[keyIdx], cachedExtend)
 			// log only hashed key so that we keep the logs briefer
-			spanLog.LogKV("msg", "fetched", "hashedKey", foundKey, "traceID", respExtent.TraceId, "start", time.UnixMilli(respExtent.Start), "end", time.UnixMilli(respExtent.Start))
-			usedBytes += respExtent.Response.Size()
+			spanLog.LogKV("msg", "fetched", "hashedKey", foundKey, "traceID", cachedExtend.TraceId, "start", time.UnixMilli(cachedExtend.Start), "end", time.UnixMilli(cachedExtend.Start))
+			usedBytes += cachedExtend.Response.Size()
 		}
 
 		if len(extents[keyIdx]) == 0 {
