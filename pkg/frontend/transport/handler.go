@@ -319,17 +319,15 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 func formatQueryString(details *querymiddleware.QueryDetails, queryString url.Values) (fields []interface{}) {
 	for k, v := range queryString {
 		var formattedValue string
-		if details != nil && (k == "start" || k == "end" || k == "step") {
-			var millis int64
+		if details != nil && (k == "start" || k == "end" || k == "step" || k == "time") {
 			switch k {
-			case "start":
-				millis = details.Start.UnixMilli()
+			case "start", "time":
+				formattedValue = details.Start.Format(time.RFC3339Nano)
 			case "end":
-				millis = details.End.UnixMilli()
+				formattedValue = details.End.Format(time.RFC3339Nano)
 			case "step":
-				millis = details.Step.Milliseconds()
+				formattedValue = strconv.FormatInt(details.Step.Milliseconds(), 10)
 			}
-			formattedValue = strconv.FormatInt(millis, 10)
 		} else {
 			formattedValue = strings.Join(v, ",")
 		}
