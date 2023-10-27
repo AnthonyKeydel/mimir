@@ -31,6 +31,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/mimir/pkg/frontend/querymiddleware"
 	"github.com/grafana/mimir/pkg/util/activitytracker"
 )
 
@@ -178,7 +179,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				require.Len(t, logger.logMessages, 1)
 
 				msg := logger.logMessages[0]
-				require.Len(t, msg, 21+len(tt.expectedParams))
+				require.Len(t, msg, 18+3+len(tt.expectedParams)) // 3 for the fields injected by query details, which are tested in a different test
 				require.Equal(t, level.InfoValue(), msg["level"])
 				require.Equal(t, "query stats", msg["msg"])
 				require.Equal(t, "query-frontend", msg["component"])
@@ -350,6 +351,121 @@ func TestHandler_Stop(t *testing.T) {
 	test.Poll(t, 1*time.Second, true, func() interface{} {
 		return stopped.Load()
 	})
+}
+
+func TestHandler_LogsFormattedQueryDetails(t *testing.T) {
+	t1 := time.UnixMilli(1698421429219)
+	t2 := t1.Add(time.Hour)
+
+	for _, tt := range []struct {
+		name                         string
+		requestFormFields            []string
+		setQueryDetails              func(*querymiddleware.QueryDetails)
+		expectedLoggedFields         map[string]string
+		expectedMissingFields        []string
+		expectedApproximateDurations map[string]time.Duration
+	}{
+		{
+			name:              "query_range",
+			requestFormFields: []string{"start", "end", "step"},
+			setQueryDetails: func(d *querymiddleware.QueryDetails) {
+				d.Start = t1
+				d.End = t2
+				d.Step = time.Minute
+			},
+			expectedLoggedFields: map[string]string{
+				"param_start": t1.Format(time.RFC3339Nano),
+				"param_end":   t2.Format(time.RFC3339Nano),
+				"param_step":  fmt.Sprint(time.Minute.Milliseconds()),
+				"length":      t2.Sub(t1).String(),
+			},
+			expectedApproximateDurations: map[string]time.Duration{
+				"time_since_param_start": time.Since(t1),
+				"time_since_param_end":   time.Since(t2),
+			},
+		},
+		{
+			name:              "instant",
+			requestFormFields: []string{"time"},
+			setQueryDetails: func(d *querymiddleware.QueryDetails) {
+				d.Start = t1
+				d.End = t1
+			},
+			expectedLoggedFields: map[string]string{
+				"param_time": t1.Format(time.RFC3339Nano),
+			},
+			expectedApproximateDurations: map[string]time.Duration{
+				"time_since_param_start": time.Since(t1),
+				"time_since_param_end":   time.Since(t1),
+			},
+			expectedMissingFields: []string{"length"},
+		},
+		{
+			// the details are used to figure out the length regardless of the user setting explicit or implicit time
+			name:              "instant, missing time from request",
+			requestFormFields: []string{},
+			setQueryDetails: func(d *querymiddleware.QueryDetails) {
+				d.Start = t1
+				d.End = t1
+			},
+			expectedLoggedFields: map[string]string{},
+			expectedApproximateDurations: map[string]time.Duration{
+				"time_since_param_start": time.Since(t1),
+				"time_since_param_end":   time.Since(t1),
+			},
+			expectedMissingFields: []string{"length", "param_time"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			activityFile := filepath.Join(t.TempDir(), "activity-tracker")
+
+			roundTripper := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				tt.setQueryDetails(querymiddleware.QueryDetailsFromContext(req.Context()))
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader("{}")),
+				}, nil
+			})
+
+			reg := prometheus.NewPedanticRegistry()
+
+			at, err := activitytracker.NewActivityTracker(activitytracker.Config{Filepath: activityFile, MaxEntries: 1024}, reg)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, at.Close()) })
+
+			logger := &testLogger{}
+			handler := NewHandler(HandlerConfig{QueryStatsEnabled: true, MaxBodySize: 1024}, roundTripper, logger, reg, at)
+
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/query", nil)
+			req = req.WithContext(user.InjectOrgID(context.Background(), "12345"))
+			req.Form = map[string][]string{}
+			for _, field := range tt.requestFormFields {
+				req.Form.Set(field, "1") // this value doesn't matter because our assertions should run against what's in the query details
+			}
+
+			resp := httptest.NewRecorder()
+
+			handler.ServeHTTP(resp, req)
+			responseData, _ := io.ReadAll(resp.Body)
+			require.Equal(t, resp.Code, http.StatusOK)
+			require.Equal(t, []byte("{}"), responseData)
+
+			require.Len(t, logger.logMessages, 1)
+
+			msg := logger.logMessages[0]
+			for field, expectedVal := range tt.expectedLoggedFields {
+				assert.Equal(t, expectedVal, msg[field])
+			}
+			for _, expectedMissingVal := range tt.expectedMissingFields {
+				assert.NotContains(t, expectedMissingVal, msg)
+			}
+			for field, expectedDuration := range tt.expectedApproximateDurations {
+				actualDuration, err := time.ParseDuration(msg[field].(string))
+				assert.NoError(t, err)
+				assert.InDelta(t, expectedDuration, actualDuration, float64(10*time.Millisecond))
+			}
+		})
+	}
 }
 
 type testLogger struct {
