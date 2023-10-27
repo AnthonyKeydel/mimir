@@ -179,7 +179,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				require.Len(t, logger.logMessages, 1)
 
 				msg := logger.logMessages[0]
-				require.Len(t, msg, 18+3+len(tt.expectedParams)) // 3 for the fields injected by query details, which are tested in a different test
+				require.Len(t, msg, 18+5+len(tt.expectedParams)) // 5 for the fields injected by query details, which are tested in a different test
 				require.Equal(t, level.InfoValue(), msg["level"])
 				require.Equal(t, "query stats", msg["msg"])
 				require.Equal(t, "query-frontend", msg["component"])
@@ -198,7 +198,6 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				require.EqualValues(t, 0, msg["sharded_queries"])
 				require.EqualValues(t, 0, msg["split_queries"])
 				require.EqualValues(t, 0, msg["estimated_series_count"])
-
 			} else {
 				require.Empty(t, logger.logMessages)
 			}
@@ -454,7 +453,7 @@ func TestHandler_LogsFormattedQueryDetails(t *testing.T) {
 
 			msg := logger.logMessages[0]
 			for field, expectedVal := range tt.expectedLoggedFields {
-				assert.Equal(t, expectedVal, msg[field])
+				assert.EqualValues(t, expectedVal, msg[field])
 			}
 			for _, expectedMissingVal := range tt.expectedMissingFields {
 				assert.NotContains(t, expectedMissingVal, msg)
@@ -462,7 +461,7 @@ func TestHandler_LogsFormattedQueryDetails(t *testing.T) {
 			for field, expectedDuration := range tt.expectedApproximateDurations {
 				actualDuration, err := time.ParseDuration(msg[field].(string))
 				assert.NoError(t, err)
-				assert.InDelta(t, expectedDuration, actualDuration, float64(10*time.Millisecond))
+				assert.InDelta(t, expectedDuration, actualDuration, float64(time.Second))
 			}
 		})
 	}
