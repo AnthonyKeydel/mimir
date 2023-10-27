@@ -421,8 +421,8 @@ func TestHandler_LogsFormattedQueryDetails(t *testing.T) {
 				d.ResultsCacheHitBytes = 200
 			},
 			expectedLoggedFields: map[string]string{
-				"results_cache_hit_bytes":  "200",
 				"results_cache_miss_bytes": "10",
+				"results_cache_hit_bytes":  "200",
 			},
 		},
 	} {
@@ -463,7 +463,7 @@ func TestHandler_LogsFormattedQueryDetails(t *testing.T) {
 
 			msg := logger.logMessages[0]
 			for field, expectedVal := range tt.expectedLoggedFields {
-				assert.EqualValues(t, expectedVal, msg[field])
+				assert.EqualValues(t, expectedVal, fmt.Sprint(msg[field]))
 			}
 			for _, expectedMissingVal := range tt.expectedMissingFields {
 				assert.NotContains(t, msg, expectedMissingVal)
