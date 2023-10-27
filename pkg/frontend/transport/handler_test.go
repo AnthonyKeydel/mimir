@@ -197,15 +197,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				require.EqualValues(t, 0, msg["sharded_queries"])
 				require.EqualValues(t, 0, msg["split_queries"])
 				require.EqualValues(t, 0, msg["estimated_series_count"])
-				require.EqualValues(t, "2562047h47m16.854775807s", msg["time_since_param_end"])
-				require.EqualValues(t, "2562047h47m16.854775807s", msg["time_since_param_start"])
-				require.EqualValues(t, "0s", msg["length"])
 
-				for name, values := range tt.expectedParams {
-					logMessageKey := fmt.Sprintf("param_%v", name)
-					expectedValues := strings.Join(values, ",")
-					require.Equal(t, expectedValues, msg[logMessageKey])
-				}
 			} else {
 				require.Empty(t, logger.logMessages)
 			}

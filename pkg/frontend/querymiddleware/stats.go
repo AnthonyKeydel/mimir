@@ -75,9 +75,9 @@ func (s queryStatsMiddleware) Do(ctx context.Context, req Request) (Response, er
 }
 
 type QueryDetails struct {
-	*stats.Stats
-	Start, End time.Time
-	Step       time.Duration
+	QuerierStats *stats.Stats
+	Start, End   time.Time
+	Step         time.Duration
 }
 
 type contextKey int
@@ -89,7 +89,7 @@ var ctxKey = contextKey(0)
 // and the stats pointer in the QueryDetails are the same.
 func ContextWithEmptyDetails(ctx context.Context) (*QueryDetails, context.Context) {
 	stats, ctx := stats.ContextWithEmptyStats(ctx)
-	details := &QueryDetails{Stats: stats}
+	details := &QueryDetails{QuerierStats: stats}
 	ctx = context.WithValue(ctx, ctxKey, details)
 	return details, ctx
 }

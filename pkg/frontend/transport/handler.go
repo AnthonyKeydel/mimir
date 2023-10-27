@@ -206,7 +206,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if f.cfg.QueryStatsEnabled {
-		writeServiceTimingHeader(queryResponseTime, hs, queryDetails.Stats)
+		writeServiceTimingHeader(queryResponseTime, hs, queryDetails.QuerierStats)
 	}
 
 	w.WriteHeader(resp.StatusCode)
@@ -246,7 +246,7 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 	userID := tenant.JoinTenantIDs(tenantIDs)
 	var stats *querier_stats.Stats
 	if details != nil {
-		stats = details.Stats
+		stats = details.QuerierStats
 	}
 	wallTime := stats.LoadWallTime()
 	numSeries := stats.LoadFetchedSeries()
