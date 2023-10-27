@@ -7,6 +7,7 @@ package transport
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -412,10 +413,21 @@ func TestHandler_LogsFormattedQueryDetails(t *testing.T) {
 			expectedApproximateDurations: map[string]time.Duration{},
 			expectedMissingFields:        []string{"length", "param_time", "time_since_param_start", "time_since_param_end"},
 		},
+		{
+			name:              "results cache statistics",
+			requestFormFields: []string{},
+			setQueryDetails: func(d *querymiddleware.QueryDetails) {
+				d.ResultsCacheMissBytes = 10
+				d.ResultsCacheHitBytes = 200
+			},
+			expectedLoggedFields: map[string]string{
+				"results_cache_hit_bytes":  "200",
+				"results_cache_miss_bytes": "10",
+			},
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			activityFile := filepath.Join(t.TempDir(), "activity-tracker")
-
 			roundTripper := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				tt.setQueryDetails(querymiddleware.QueryDetailsFromContext(req.Context()))
 				return &http.Response{
