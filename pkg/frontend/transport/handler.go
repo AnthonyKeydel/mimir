@@ -288,8 +288,8 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 		// Start and End may be zero when the request wasn't a query (e.g. /metadata)
 		logMessage = append(logMessage,
 			"length", details.End.Sub(details.Start).String(),
-			"cached_results_bytes", details.CachedResultsBytes,
-			"uncached_results_bytes", details.UncachedResultsBytes,
+			"results_cache_hit_bytes", details.ResultsCacheHitBytes,
+			"results_cache_miss_bytes", details.ResultsCacheMissBytes,
 		)
 	}
 

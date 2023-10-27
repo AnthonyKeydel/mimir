@@ -234,7 +234,7 @@ func (s *splitAndCacheMiddleware) Do(ctx context.Context, req Request) (Response
 		}
 
 		if details := QueryDetailsFromContext(ctx); details != nil {
-			details.UncachedResultsBytes = splitReqs.countDownstreamResponseBytes()
+			details.ResultsCacheMissBytes = splitReqs.countDownstreamResponseBytes()
 		}
 	}
 
@@ -414,7 +414,7 @@ func (s *splitAndCacheMiddleware) fetchCacheExtents(ctx context.Context, now tim
 	spanLog.LogKV("extents filtered out due to ttl", extentsOutOfTTL)
 
 	if details := QueryDetailsFromContext(ctx); details != nil {
-		details.CachedResultsBytes = usedBytes
+		details.ResultsCacheHitBytes = usedBytes
 	}
 
 	return extents
