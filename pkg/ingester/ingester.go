@@ -1591,6 +1591,80 @@ func (i *Ingester) LabelValuesCardinality(req *client.LabelValuesCardinalityRequ
 	)
 }
 
+func (i *Ingester) ActiveSeries(request *client.ActiveSeriesRequest, stream client.Ingester_ActiveSeriesServer) error {
+	if err := i.checkRunning(); err != nil {
+		return err
+	}
+	if err := i.checkReadOverloaded(); err != nil {
+		return err
+	}
+
+	spanlog, ctx := spanlogger.NewWithLogger(stream.Context(), i.logger, "Ingester.ActiveSeries")
+	defer spanlog.Finish()
+
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return err
+	}
+
+	matchers, err := client.FromLabelMatchers(request.GetMatchers())
+	if err != nil {
+		return fmt.Errorf("error parsing label matchers: %w", err)
+	}
+
+	db := i.getTSDB(userID)
+	if db == nil {
+		level.Debug(i.logger).Log("msg", "no TSDB for user", "userID", userID)
+		return nil
+	}
+
+	ts, err := activeSeries(ctx, db, matchers)
+	if err != nil {
+		return err
+	}
+
+	err = client.SendActiveSeriesResponse(stream, &client.QueryResponse{Timeseries: ts})
+	if err != nil {
+		return fmt.Errorf("error sending response: %w", err)
+	}
+
+	return nil
+}
+
+func activeSeries(ctx context.Context, db *userTSDB, matchers []*labels.Matcher) (ts []mimirpb.TimeSeries, err error) {
+	idx, err := db.Head().Index()
+	if err != nil {
+		return nil, fmt.Errorf("error getting index: %w", err)
+	}
+
+	postings, err := tsdb.PostingsForMatchers(ctx, idx, matchers...)
+	if err != nil {
+		return nil, fmt.Errorf("error getting postings: %w", err)
+	}
+
+	if db.activeSeries == nil {
+		return nil, fmt.Errorf("active series tracker is not initialized")
+	}
+
+	activePostingsIterator := activeseries.NewPostings(db.activeSeries, postings)
+
+	buffer := labels.NewScratchBuilder(10)
+	for activePostingsIterator.Next() {
+		buffer.Reset()
+		err := idx.Series(activePostingsIterator.At(), &buffer, nil)
+		if err != nil {
+			return nil, fmt.Errorf("error getting series: %w", err)
+		}
+		ts = append(ts, mimirpb.TimeSeries{Labels: mimirpb.FromLabelsToLabelAdapters(buffer.Labels())})
+	}
+
+	if err := activePostingsIterator.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating over postings: %w", err)
+	}
+
+	return ts, nil
+}
+
 func createUserStats(db *userTSDB, req *client.UserStatsRequest) (*client.UserStatsResponse, error) {
 	apiRate := db.ingestedAPISamples.Rate()
 	ruleRate := db.ingestedRuleSamples.Rate()

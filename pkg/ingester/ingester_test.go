@@ -7091,6 +7091,51 @@ func TestIngesterActiveSeries(t *testing.T) {
 
 				// Check tracked Prometheus metrics
 				require.NoError(t, testutil.GatherAndCompare(gatherer, strings.NewReader(expectedMetrics), metricNames...))
+
+				ts, err := activeSeries(context.Background(), ingester.getTSDB(userID), []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "team", "a")})
+				require.NoError(t, err)
+				assert.Empty(t, ts)
+			},
+		},
+		"active series for cardinality API": {
+			test: func(t *testing.T, ingester *Ingester, gatherer prometheus.Gatherer) {
+				pushWithUser(t, ingester, labelsToPush, userID, req)
+				pushWithUser(t, ingester, labelsToPush, userID2, req)
+				pushWithUser(t, ingester, labelsToPushHist, userID, reqHist)
+				pushWithUser(t, ingester, labelsToPushHist, userID2, reqHist)
+
+				// Update active series for metrics check.
+				ingester.updateActiveSeries(time.Now())
+
+				res, err := activeSeries(
+					context.Background(),
+					ingester.getTSDB(userID),
+					[]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "team", "a")},
+				)
+
+				require.NoError(t, err)
+				assert.NotEmpty(t, res)
+
+				for _, ts := range res {
+					hasTeamA := false
+					for _, label := range ts.Labels {
+						if label.Name == "team" {
+							hasTeamA = true
+							assert.Equal(t, "a", label.Value)
+						}
+					}
+					assert.True(t, hasTeamA)
+				}
+
+				ingester.updateActiveSeries(time.Now().Add(30 * time.Minute))
+
+				res, err = activeSeries(
+					context.Background(),
+					ingester.getTSDB(userID),
+					[]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "team", "a")},
+				)
+				require.NoError(t, err)
+				assert.Empty(t, res)
 			},
 		},
 	}
