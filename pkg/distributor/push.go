@@ -147,11 +147,11 @@ func handler(
 				level.Error(logger).Log("msg", "push error", "err", err)
 			}
 
-			if code == http.StatusTooManyRequests || code >= 500 && retryCfg != nil {
+			if (code == http.StatusTooManyRequests || code/100 == 5) && (retryCfg != nil && retryCfg.Strategy != 0) {
 				// If we are going to retry, set the Retry-After header.
 				// This is used by the client to determine how long to wait before retrying.
 				retrySeconds := calculateRetryAfter(r, retryCfg)
-				logger.Log("msg", "get retry-after", "retry-after", retrySeconds, "strategy", retryCfg.Strategy, "maxDelay", retryCfg.MaxDelay)
+				level.Info(logger).Log("msg", "set retry-after header", "retry-after", retrySeconds, "strategy", retryCfg.Strategy, "maxDelay", retryCfg.MaxDelay)
 				w.Header().Set("Retry-After", retrySeconds)
 			}
 			http.Error(w, msg, code)
@@ -178,9 +178,9 @@ func calculateRetryAfter(req *http.Request, retryCfg *RetryConfig) string {
 	base := retryCfg.Base
 
 	switch retryCfg.Strategy {
-	case 1:
-		base = retryCfg.Base * time.Duration(retryAttemp)
 	case 2:
+		base = retryCfg.Base * time.Duration(retryAttemp)
+	case 3:
 		base = retryCfg.Base * time.Duration(math.Pow(2, float64(retryAttemp-1)))
 	}
 
@@ -207,20 +207,15 @@ func toHTTPStatus(ctx context.Context, pushErr error, limits *validation.Overrid
 		switch distributorErr.errorCause() {
 		case mimirpb.BAD_DATA:
 			return http.StatusBadRequest
-		case mimirpb.INGESTION_RATE_LIMITED:
-			// Return a 429 here to tell the client it is going too fast.
+		case mimirpb.INGESTION_RATE_LIMITED, mimirpb.REQUEST_RATE_LIMITED:
+			// Return a 429 or a 529 here depending on configuration to tell the client it is going too fast.
 			// Client may discard the data or slow down and re-send.
 			// Prometheus v2.26 added a remote-write option 'retry_on_http_429'.
-			return http.StatusTooManyRequests
-		case mimirpb.REQUEST_RATE_LIMITED:
 			serviceOverloadErrorEnabled := false
 			userID, err := tenant.TenantID(ctx)
 			if err == nil {
 				serviceOverloadErrorEnabled = limits.ServiceOverloadStatusCodeOnRateLimitEnabled(userID)
 			}
-			// Return a 429 or a 529 here depending on configuration to tell the client it is going too fast.
-			// Client may discard the data or slow down and re-send.
-			// Prometheus v2.26 added a remote-write option 'retry_on_http_429'.
 			if serviceOverloadErrorEnabled {
 				return StatusServiceOverloaded
 			}

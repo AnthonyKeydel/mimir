@@ -24,7 +24,7 @@ std.manifestYamlDoc({
 
     // If true, start and enable scraping by these components.
     // Note that if more than one component is enabled, the dashboards shown in Grafana may contain duplicate series or aggregates may be doubled or tripled.
-    enable_grafana_agent: false,
+    enable_grafana_agent: true,
     enable_prometheus: true,  // If Prometheus is disabled, recording rules will not be evaluated and so dashboards in Grafana that depend on these recorded series will display no data.
     enable_otel_collector: false,
   },
@@ -305,7 +305,7 @@ std.manifestYamlDoc({
 
   prometheus:: {
     prometheus: {
-      image: 'prom/prometheus:v2.45.0',
+      image: 'prom/prometheus:v2.47.0',
       command: [
         '--config.file=/etc/prometheus/prometheus.yaml',
         '--enable-feature=exemplar-storage',
@@ -340,8 +340,8 @@ std.manifestYamlDoc({
     // Scrape the metrics also with the Grafana agent (useful to test metadata ingestion
     // until metadata remote write is not supported by Prometheus).
     'grafana-agent': {
-      image: 'grafana/agent:v0.21.2',
-      command: ['-config.file=/etc/agent-config/grafana-agent.yaml', '-prometheus.wal-directory=/tmp'],
+      image: 'grafana/agent:v0.37.3',
+      command: ['-config.file=/etc/agent-config/grafana-agent.yaml', '-metrics.wal-directory=/tmp'],
       volumes: ['./config:/etc/agent-config'],
       ports: ['9091:9091'],
     },

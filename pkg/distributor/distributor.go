@@ -1210,6 +1210,7 @@ func (d *Distributor) Push(ctx context.Context, req *mimirpb.WriteRequest) (*mim
 		return &mimirpb.WriteResponse{}, nil
 	}
 	handledErr := d.handlePushError(ctx, pushErr)
+
 	return nil, handledErr
 }
 

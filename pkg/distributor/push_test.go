@@ -814,7 +814,7 @@ func TestHandler_ErrorWithRetryAfterHeader(t *testing.T) {
 			err:                context.Canceled,
 			expectedHTTPStatus: statusClientClosedRequest,
 			expectRetryAfter:   false,
-			retryCfg:           &RetryConfig{Base: 5 * time.Second, Strategy: 0, MaxDelay: time.Minute},
+			retryCfg:           &RetryConfig{Base: 5 * time.Second, Strategy: 1, MaxDelay: time.Minute},
 		},
 		{
 			name:               "Generic error, HTTP 500, no Retry-After",
@@ -822,7 +822,7 @@ func TestHandler_ErrorWithRetryAfterHeader(t *testing.T) {
 			err:                fmt.Errorf("something went wrong during the push"),
 			expectedHTTPStatus: http.StatusInternalServerError,
 			expectRetryAfter:   false,
-			retryCfg:           nil,
+			retryCfg:           &RetryConfig{Base: 5 * time.Second, Strategy: 0, MaxDelay: time.Minute},
 		},
 		{
 			name:               "Generic error, HTTP 500, Retry-After with base",
@@ -830,7 +830,7 @@ func TestHandler_ErrorWithRetryAfterHeader(t *testing.T) {
 			err:                fmt.Errorf("something went wrong during the push"),
 			expectedHTTPStatus: http.StatusInternalServerError,
 			expectRetryAfter:   true,
-			retryCfg:           &RetryConfig{Base: 5 * time.Second, Strategy: 0, MaxDelay: time.Minute},
+			retryCfg:           &RetryConfig{Base: 5 * time.Second, Strategy: 1, MaxDelay: time.Minute},
 			valueUpperBound:    5,
 		},
 		{
@@ -840,7 +840,7 @@ func TestHandler_ErrorWithRetryAfterHeader(t *testing.T) {
 			expectedHTTPStatus: http.StatusInternalServerError,
 			expectRetryAfter:   true,
 			retryAttemp:        3,
-			retryCfg:           &RetryConfig{Base: 5 * time.Second, Strategy: 1, MaxDelay: time.Minute},
+			retryCfg:           &RetryConfig{Base: 5 * time.Second, Strategy: 2, MaxDelay: time.Minute},
 			valueUpperBound:    15,
 		},
 		{
@@ -850,7 +850,7 @@ func TestHandler_ErrorWithRetryAfterHeader(t *testing.T) {
 			expectedHTTPStatus: http.StatusInternalServerError,
 			expectRetryAfter:   true,
 			retryAttemp:        3,
-			retryCfg:           &RetryConfig{Base: 5 * time.Second, Strategy: 2, MaxDelay: time.Minute},
+			retryCfg:           &RetryConfig{Base: 5 * time.Second, Strategy: 3, MaxDelay: time.Minute},
 			valueUpperBound:    20,
 		},
 		{
@@ -860,7 +860,7 @@ func TestHandler_ErrorWithRetryAfterHeader(t *testing.T) {
 			expectedHTTPStatus: http.StatusInternalServerError,
 			expectRetryAfter:   true,
 			retryAttemp:        5,
-			retryCfg:           &RetryConfig{Base: 5 * time.Second, Strategy: 2, MaxDelay: 3 * time.Second},
+			retryCfg:           &RetryConfig{Base: 5 * time.Second, Strategy: 3, MaxDelay: 3 * time.Second},
 			valueUpperBound:    3,
 		},
 	}
