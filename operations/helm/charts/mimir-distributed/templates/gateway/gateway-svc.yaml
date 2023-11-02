@@ -29,9 +29,9 @@ spec:
       {{- end }}
       protocol: TCP
     {{- with .service.legacyPort }}
-    - port: {{ . }}
+    - name: legacy-http-metrics
+      port: {{ . }}
       protocol: TCP
-      name: legacy-http-metrics
       targetPort: http-metrics
     {{- end }}
   selector:
