@@ -3,7 +3,6 @@
 ## main / unreleased
 
 ### Grafana Mimir
-* [BUGFIX] Added helm template to use gateway nodePort values
 * [CHANGE] Querier: Split worker GRPC config into separate client configs for the frontend and scheduler to allow TLS to be configured correctly when specifying the `tls_server_name`. The GRPC config specified under `-querier.frontend-client.*` will no longer apply to the scheduler client, and will need to be set explicitly under `-querier.scheduler-client.*`. #6445
 * [CHANGE] Store-gateway: enable sparse index headers by default. Sparse index headers reduce the time to load an index header up to 90%. #6005
 * [CHANGE] Store-gateway: lazy-loading concurrency limit default value is now 4. #6004
@@ -111,7 +110,7 @@
 * [ENHANCEMENT] Document the concept of native histograms and how to send them to Mimir, migration path. #5956 #6488 #6539
 
 ### Tools
-
+* [BUGFIX] Modified gateway service helm template to use nodePort values
 * [CHANGE] tsdb-index: Rename tool to tsdb-series. #6317
 * [FEATURE] tsdb-labels: Add tool to print label names and values of a TSDB block. #6317
 * [ENHANCEMENT] trafficdump: Trafficdump can now parse OTEL requests. Entire request is dumped to output, there's no filtering of fields or matching of series done. #6108
