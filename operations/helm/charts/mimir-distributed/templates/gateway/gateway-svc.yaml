@@ -21,10 +21,13 @@ spec:
   loadBalancerIP: {{ .service.loadBalancerIP }}
   {{- end }}
   ports:
-    - port: {{ .service.port }}
-      protocol: TCP
-      name: http-metrics
+    - name: http-metrics
+      port: {{ .service.port }}
       targetPort: http-metrics
+      {{- if and (eq "NodePort" .service.type) .service.nodePort }}
+      nodePort: {{ .service.nodePort }}
+      {{- end }}
+      protocol: TCP
     {{- with .service.legacyPort }}
     - port: {{ . }}
       protocol: TCP
