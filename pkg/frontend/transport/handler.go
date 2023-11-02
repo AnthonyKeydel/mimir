@@ -286,11 +286,7 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 
 	if details != nil && !details.Start.IsZero() && !details.End.IsZero() {
 		// Start and End may be zero when the request wasn't a query (e.g. /metadata)
-		logMessage = append(
-			logMessage, "length", details.End.Sub(details.Start).String(),
-			"time_since_param_start", time.Since(details.Start).String(),
-			"time_since_param_end", time.Since(details.End).String(),
-		)
+		logMessage = append(logMessage, "length", details.End.Sub(details.Start).String())
 	}
 
 	if len(f.cfg.LogQueryRequestHeaders) != 0 {
