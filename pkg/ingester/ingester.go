@@ -1618,12 +1618,19 @@ func (i *Ingester) ActiveSeries(request *client.ActiveSeriesRequest, stream clie
 		return nil
 	}
 
-	ts, err := activeSeries(ctx, db, matchers)
+	labelSets, err := activeSeries(ctx, db, matchers)
 	if err != nil {
 		return err
 	}
 
-	err = client.SendActiveSeriesResponse(stream, &client.QueryResponse{Timeseries: ts})
+	res := &client.ActiveSeriesResponse{
+		Metric: make([]*mimirpb.Metric, 0),
+	}
+	for _, lbls := range labelSets {
+		res.Metric = append(res.Metric, &mimirpb.Metric{Labels: mimirpb.FromLabelsToLabelAdapters(lbls)})
+	}
+
+	err = client.SendActiveSeriesResponse(stream, res)
 	if err != nil {
 		return fmt.Errorf("error sending response: %w", err)
 	}
@@ -1631,7 +1638,7 @@ func (i *Ingester) ActiveSeries(request *client.ActiveSeriesRequest, stream clie
 	return nil
 }
 
-func activeSeries(ctx context.Context, db *userTSDB, matchers []*labels.Matcher) (ts []mimirpb.TimeSeries, err error) {
+func activeSeries(ctx context.Context, db *userTSDB, matchers []*labels.Matcher) (lbls []labels.Labels, err error) {
 	idx, err := db.Head().Index()
 	if err != nil {
 		return nil, fmt.Errorf("error getting index: %w", err)
@@ -1655,14 +1662,14 @@ func activeSeries(ctx context.Context, db *userTSDB, matchers []*labels.Matcher)
 		if err != nil {
 			return nil, fmt.Errorf("error getting series: %w", err)
 		}
-		ts = append(ts, mimirpb.TimeSeries{Labels: mimirpb.FromLabelsToLabelAdapters(buffer.Labels())})
+		lbls = append(lbls, buffer.Labels())
 	}
 
 	if err := activePostingsIterator.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating over postings: %w", err)
 	}
 
-	return ts, nil
+	return lbls, nil
 }
 
 func createUserStats(db *userTSDB, req *client.UserStatsRequest) (*client.UserStatsResponse, error) {

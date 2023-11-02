@@ -33,7 +33,7 @@ func SendLabelValuesCardinalityResponse(s Ingester_LabelValuesCardinalityServer,
 	})
 }
 
-func SendActiveSeriesResponse(s Ingester_ActiveSeriesServer, response *QueryResponse) error {
+func SendActiveSeriesResponse(s Ingester_ActiveSeriesServer, response *ActiveSeriesResponse) error {
 	return sendWithContextErrChecking(s.Context(), func() error {
 		return s.Send(response)
 	})

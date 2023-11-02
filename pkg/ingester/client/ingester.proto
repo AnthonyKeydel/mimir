@@ -37,7 +37,7 @@ service Ingester {
   // The listing order of the labels is not guaranteed.
   rpc LabelValuesCardinality(LabelValuesCardinalityRequest) returns (stream LabelValuesCardinalityResponse) {};
 
-  rpc ActiveSeries(ActiveSeriesRequest) returns (stream QueryResponse) {};
+  rpc ActiveSeries(ActiveSeriesRequest) returns (stream ActiveSeriesResponse) {};
 }
 
 message LabelNamesAndValuesRequest {
@@ -230,6 +230,10 @@ message MetricsMetadataRequest {
 
 message MetricsMetadataResponse {
   repeated cortexpb.MetricMetadata metadata = 1;
+}
+
+message ActiveSeriesResponse {
+  repeated cortexpb.Metric metric = 1;
 }
 
 message TimeSeriesChunk {

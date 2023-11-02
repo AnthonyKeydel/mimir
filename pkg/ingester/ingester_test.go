@@ -7107,35 +7107,28 @@ func TestIngesterActiveSeries(t *testing.T) {
 				// Update active series for metrics check.
 				ingester.updateActiveSeries(time.Now())
 
-				res, err := activeSeries(
+				labelSets, err := activeSeries(
 					context.Background(),
 					ingester.getTSDB(userID),
 					[]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "team", "a")},
 				)
 
 				require.NoError(t, err)
-				assert.NotEmpty(t, res)
+				assert.NotEmpty(t, labelSets)
 
-				for _, ts := range res {
-					hasTeamA := false
-					for _, label := range ts.Labels {
-						if label.Name == "team" {
-							hasTeamA = true
-							assert.Equal(t, "a", label.Value)
-						}
-					}
-					assert.True(t, hasTeamA)
+				for _, lbls := range labelSets {
+					assert.Equal(t, "a", lbls.Get("team"))
 				}
 
 				ingester.updateActiveSeries(time.Now().Add(30 * time.Minute))
 
-				res, err = activeSeries(
+				labelSets, err = activeSeries(
 					context.Background(),
 					ingester.getTSDB(userID),
 					[]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "team", "a")},
 				)
 				require.NoError(t, err)
-				assert.Empty(t, res)
+				assert.Empty(t, labelSets)
 			},
 		},
 	}
