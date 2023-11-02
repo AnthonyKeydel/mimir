@@ -378,10 +378,7 @@ func TestHandler_LogsFormattedQueryDetails(t *testing.T) {
 				"param_step":  fmt.Sprint(time.Minute.Milliseconds()),
 				"length":      t2.Sub(t1).String(),
 			},
-			expectedApproximateDurations: map[string]time.Duration{
-				"time_since_param_start": time.Since(t1),
-				"time_since_param_end":   time.Since(t2),
-			},
+			expectedApproximateDurations: map[string]time.Duration{},
 		},
 		{
 			name:              "instant",
@@ -393,10 +390,7 @@ func TestHandler_LogsFormattedQueryDetails(t *testing.T) {
 			expectedLoggedFields: map[string]string{
 				"param_time": t1.Format(time.RFC3339Nano),
 			},
-			expectedApproximateDurations: map[string]time.Duration{
-				"time_since_param_start": time.Since(t1),
-				"time_since_param_end":   time.Since(t1),
-			},
+			expectedApproximateDurations: map[string]time.Duration{},
 		},
 		{
 			// the details are used to figure out the length regardless of the user setting explicit or implicit time
@@ -406,12 +400,9 @@ func TestHandler_LogsFormattedQueryDetails(t *testing.T) {
 				d.Start = t1
 				d.End = t1
 			},
-			expectedLoggedFields: map[string]string{},
-			expectedApproximateDurations: map[string]time.Duration{
-				"time_since_param_start": time.Since(t1),
-				"time_since_param_end":   time.Since(t1),
-			},
-			expectedMissingFields: []string{"param_time"},
+			expectedLoggedFields:         map[string]string{},
+			expectedApproximateDurations: map[string]time.Duration{},
+			expectedMissingFields:        []string{"param_time"},
 		},
 		{
 			// the details aren't set by the query stats middleware if the request isn't a query
