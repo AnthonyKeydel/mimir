@@ -155,7 +155,10 @@ func OTLPHandler(
 		req.Timeseries = metrics
 
 		if enableOtelMetadataStorage {
-			metadata := otelMetricsToMetadata(otlpReq.Metrics())
+			metadata, err := otelMetricsToMetadata(ctx, limits, otlpReq.Metrics())
+			if err != nil {
+				return nil, err
+			}
 			req.Metadata = metadata
 		}
 
@@ -183,7 +186,14 @@ func otelMetricTypeToMimirMetricType(otelMetric pmetric.Metric) mimirpb.MetricMe
 	return mimirpb.UNKNOWN
 }
 
-func otelMetricsToMetadata(md pmetric.Metrics) []*mimirpb.MetricMetadata {
+func otelMetricsToMetadata(ctx context.Context, limits *validation.Overrides, md pmetric.Metrics) ([]*mimirpb.MetricMetadata, error) {
+	tenantID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	addSuffixes := limits.OTelMetricSuffixesEnabled(tenantID)
+
 	resourceMetricsSlice := md.ResourceMetrics()
 
 	metadataLength := 0
@@ -203,7 +213,7 @@ func otelMetricsToMetadata(md pmetric.Metrics) []*mimirpb.MetricMetadata {
 				metric := scopeMetrics.Metrics().At(k)
 				entry := mimirpb.MetricMetadata{
 					Type:             otelMetricTypeToMimirMetricType(metric),
-					MetricFamilyName: prometheustranslator.BuildCompliantName(metric, "", true), // TODO expose addMetricSuffixes in configuration (https://github.com/grafana/mimir/issues/5967)
+					MetricFamilyName: prometheustranslator.BuildCompliantName(metric, "", addSuffixes),
 					Help:             metric.Description(),
 					Unit:             metric.Unit(),
 				}
@@ -212,8 +222,7 @@ func otelMetricsToMetadata(md pmetric.Metrics) []*mimirpb.MetricMetadata {
 		}
 	}
 
-	return metadata
-
+	return metadata, nil
 }
 
 func otelMetricsToTimeseries(ctx context.Context, discardedDueToOtelParseError *prometheus.CounterVec, logger kitlog.Logger, md pmetric.Metrics) ([]mimirpb.PreallocTimeseries, error) {
