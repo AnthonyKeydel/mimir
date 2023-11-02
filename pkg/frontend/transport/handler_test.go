@@ -397,7 +397,6 @@ func TestHandler_LogsFormattedQueryDetails(t *testing.T) {
 				"time_since_param_start": time.Since(t1),
 				"time_since_param_end":   time.Since(t1),
 			},
-			expectedMissingFields: []string{"length"},
 		},
 		{
 			// the details are used to figure out the length regardless of the user setting explicit or implicit time
@@ -412,7 +411,16 @@ func TestHandler_LogsFormattedQueryDetails(t *testing.T) {
 				"time_since_param_start": time.Since(t1),
 				"time_since_param_end":   time.Since(t1),
 			},
-			expectedMissingFields: []string{"length", "param_time"},
+			expectedMissingFields: []string{"param_time"},
+		},
+		{
+			// the details aren't set by the query stats middleware if the request isn't a query
+			name:                         "not a query request",
+			requestFormFields:            []string{},
+			setQueryDetails:              func(d *querymiddleware.QueryDetails) {},
+			expectedLoggedFields:         map[string]string{},
+			expectedApproximateDurations: map[string]time.Duration{},
+			expectedMissingFields:        []string{"length", "param_time", "time_since_param_start", "time_since_param_end"},
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -456,7 +464,7 @@ func TestHandler_LogsFormattedQueryDetails(t *testing.T) {
 				assert.EqualValues(t, expectedVal, msg[field])
 			}
 			for _, expectedMissingVal := range tt.expectedMissingFields {
-				assert.NotContains(t, expectedMissingVal, msg)
+				assert.NotContains(t, msg, expectedMissingVal)
 			}
 			for field, expectedDuration := range tt.expectedApproximateDurations {
 				actualDuration, err := time.ParseDuration(msg[field].(string))
