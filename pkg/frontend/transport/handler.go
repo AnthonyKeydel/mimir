@@ -284,10 +284,12 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 		"estimated_series_count", stats.GetEstimatedSeriesCount(),
 	}, formatQueryString(details, queryString)...)
 
-	if details != nil && !details.Start.IsZero() && !details.End.IsZero() {
-		// Start and End may be zero when the request wasn't a query (e.g. /metadata)
+	if details != nil {
+		if !details.Start.IsZero() && !details.End.IsZero() {
+			// Start and End may be zero when the request wasn't a query (e.g. /metadata)
+			logMessage = append(logMessage, "length", details.End.Sub(details.Start).String())
+		}
 		logMessage = append(logMessage,
-			"length", details.End.Sub(details.Start).String(),
 			"results_cache_hit_bytes", details.ResultsCacheHitBytes,
 			"results_cache_miss_bytes", details.ResultsCacheMissBytes,
 		)
